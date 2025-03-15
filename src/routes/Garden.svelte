@@ -105,7 +105,9 @@
 
     // UI states
     let isPlantingMode = $state(false);
+    let isRearrangeMode = $state(false);
     let showFlowerDetails = $state<string | null>(null);
+    let selectedTileForRearrange = $state<number | null>(null);
 
     // Load data from local storage on mount
     onMount(() => {
@@ -212,6 +214,10 @@
 
     // Start planting mode
     function startPlanting(flowerId: string) {
+        // Exit rearrange mode if active
+        isRearrangeMode = false;
+        selectedTileForRearrange = null;
+        
         const flower = availableFlowers.find((f) => f.id === flowerId);
         
         if (flower && userPoints >= flower.cost) {
@@ -226,6 +232,13 @@
     // Plant a flower in a tile
     function plantFlower(tileId: number) {
         if (!selectedFlower || !isPlantingMode) return;
+        
+        // Check if the tile already has a flower
+        const tile = garden.tiles.find(t => t.id === tileId);
+        if (tile?.flowerId) {
+            alert("This tile already has a flower! Choose an empty spot.");
+            return;
+        }
         
         const flower = availableFlowers.find((f) => f.id === selectedFlower);
         
@@ -262,6 +275,158 @@
     function cancelPlanting() {
         isPlantingMode = false;
         selectedFlower = null;
+    }
+    
+    // Start rearrange mode
+    function startRearrange() {
+        // Exit planting mode if active
+        isPlantingMode = false;
+        selectedFlower = null;
+        
+        isRearrangeMode = true;
+        selectedTileForRearrange = null;
+        console.log("Starting rearrange mode");
+    }
+    
+    // Cancel rearrange mode
+    function cancelRearrange() {
+        isRearrangeMode = false;
+        selectedTileForRearrange = null;
+    }
+    
+    // Remove a flower from a tile
+    function removeFlower(tileId: number | null) {
+        if (tileId === null) return;
+        
+        const tile = garden.tiles.find(t => t.id === tileId);
+        if (!tile?.flowerId) return;
+        
+        console.log(`Removing flower from tile ${tileId}`);
+        
+        // Update the tile by removing the flower
+        garden.tiles = garden.tiles.map(t => {
+            if (t.id === tileId) {
+                return {
+                    ...t,
+                    flowerId: null,
+                    plantedDate: null
+                };
+            }
+            return t;
+        });
+        
+        // Reset selection
+        selectedTileForRearrange = null;
+        
+        // Save garden data
+        saveGardenData();
+    }
+    
+    // Handle tile click in rearrange mode
+    function handleTileClick(tileId: number) {
+        if (isPlantingMode) {
+            plantFlower(tileId);
+            return;
+        }
+        
+        if (!isRearrangeMode) return;
+        
+        const tile = garden.tiles.find(t => t.id === tileId);
+        
+        // First selection: selecting a flower to move
+        if (selectedTileForRearrange === null) {
+            if (!tile?.flowerId) {
+                alert("Please select a tile with a flower to move or remove.");
+                return;
+            }
+            
+            selectedTileForRearrange = tileId;
+            console.log(`Selected flower in tile ${tileId} to move`);
+        } 
+        // Second selection: selecting destination
+        else {
+            // Can't move to the same tile - deselect instead
+            if (selectedTileForRearrange === tileId) {
+                selectedTileForRearrange = null;
+                return;
+            }
+            
+            // Check if destination already has a flower
+            if (tile?.flowerId) {
+                // Allow swapping flowers
+                const sourceTile = garden.tiles.find(t => t.id === selectedTileForRearrange);
+                if (!sourceTile?.flowerId) {
+                    selectedTileForRearrange = null;
+                    return;
+                }
+                
+                // Swap the flowers between the two tiles
+                const sourceFlowerId = sourceTile.flowerId;
+                const sourcePlantedDate = sourceTile.plantedDate;
+                const destFlowerId = tile.flowerId;
+                const destPlantedDate = tile.plantedDate;
+                
+                garden.tiles = garden.tiles.map(t => {
+                    if (t.id === selectedTileForRearrange) {
+                        return { 
+                            ...t, 
+                            flowerId: destFlowerId, 
+                            plantedDate: destPlantedDate 
+                        };
+                    } else if (t.id === tileId) {
+                        return { 
+                            ...t, 
+                            flowerId: sourceFlowerId, 
+                            plantedDate: sourcePlantedDate 
+                        };
+                    }
+                    return t;
+                });
+                
+                console.log(`Swapped flowers between tiles ${selectedTileForRearrange} and ${tileId}`);
+            } else {
+                // Get the source flower
+                const sourceTile = garden.tiles.find(t => t.id === selectedTileForRearrange);
+                if (!sourceTile?.flowerId) {
+                    selectedTileForRearrange = null;
+                    return;
+                }
+                
+                // Perform the move
+                const flowerId = sourceTile.flowerId;
+                const plantedDate = sourceTile.plantedDate;
+                
+                garden.tiles = garden.tiles.map(t => {
+                    if (t.id === selectedTileForRearrange) {
+                        // Clear source tile
+                        return { ...t, flowerId: null, plantedDate: null };
+                    } else if (t.id === tileId) {
+                        // Move flower to destination tile
+                        return { ...t, flowerId, plantedDate };
+                    }
+                    return t;
+                });
+                
+                console.log(`Moved flower from tile ${selectedTileForRearrange} to ${tileId}`);
+            }
+            
+            // Exit rearrange selection mode
+            selectedTileForRearrange = null;
+            
+            // Save garden data
+            saveGardenData();
+        }
+    }
+    
+    // Trigger a smaller confetti celebration for rearranging
+    function triggerSmallConfetti() {
+        if (isBrowser) {
+            confetti({
+                particleCount: 30,
+                spread: 50,
+                origin: { y: 0.6 },
+            });
+        }
     }
 
     // Trigger confetti celebration
@@ -311,15 +476,20 @@
         {#each garden.tiles as tile (tile.id)}
             <button
                 class={`w-16 h-16 rounded-lg flex items-center justify-center text-3xl
-                ${isPlantingMode ? "border-2 border-dashed border-primary hover:bg-primary/10" : "bg-base-200"}`}
-                onclick={() => isPlantingMode ? plantFlower(tile.id) : null}
-                disabled={!isPlantingMode && !tile.flowerId}
+                ${isPlantingMode && !tile.flowerId ? "border-2 border-dashed border-primary hover:bg-primary/10" : ""}
+                ${isRearrangeMode ? "border-2 border-dashed border-secondary hover:bg-secondary/10" : ""}
+                ${!isPlantingMode && !isRearrangeMode ? "bg-base-200" : ""}
+                ${selectedTileForRearrange === tile.id ? "bg-secondary/30 border-2 border-secondary" : ""}`}
+                onclick={() => handleTileClick(tile.id)}
+                disabled={!isPlantingMode && !isRearrangeMode && !tile.flowerId}
             >
                 {#if tile.flowerId}
                     <span>{getFlowerForTile(tile.id)?.image || "🌱"}</span>
                 {:else}
                     {#if isPlantingMode}
                         <span class="text-primary/50 text-xs">Plant here</span>
+                    {:else if isRearrangeMode}
+                        <span class="text-secondary/50 text-xs">Move here</span>
                     {:else}
                         <span class="text-xs text-base-content/30">Empty</span>
                     {/if}
@@ -331,13 +501,43 @@
     {#if isPlantingMode}
         <div class="mb-4 p-3 bg-primary/10 rounded-lg">
             <p class="text-sm mb-2">
-                Select a spot in your garden to plant your flower.
+                Select an empty spot in your garden to plant your flower.
             </p>
             <button class="btn btn-sm btn-ghost" onclick={cancelPlanting}>
                 Cancel
             </button>
         </div>
+    {:else if isRearrangeMode}
+        <div class="mb-4 p-3 bg-secondary/10 rounded-lg">
+            <p class="text-sm mb-2">
+                {#if selectedTileForRearrange === null}
+                    First, select a flower to move or swap.
+                {:else}
+                    <strong>Selected: {getFlowerForTile(selectedTileForRearrange)?.name || "Flower"}</strong>
+                    <br>
+                    Now, select an empty spot to move your flower, or another flower to swap positions.
+                {/if}
+            </p>
+            <div class="flex justify-between mt-2">
+                <button class="btn btn-sm btn-ghost" onclick={cancelRearrange}>
+                    Cancel
+                </button>
+                
+                {#if selectedTileForRearrange !== null}
+                    <button class="btn btn-sm btn-error" onclick={() => removeFlower(selectedTileForRearrange)}>
+                        Remove Flower
+                    </button>
+                {/if}
+            </div>
+        </div>
     {:else}
+        <!-- Mode Selection Buttons -->
+        <div class="flex justify-between mb-4">
+            <button class="btn btn-sm btn-secondary" onclick={startRearrange}>
+                Rearrange Garden
+            </button>
+        </div>
+        
         <!-- Available Flowers to Plant -->
         <div>
             <h3 class="text-lg font-semibold mb-2">Plant New Flowers</h3>

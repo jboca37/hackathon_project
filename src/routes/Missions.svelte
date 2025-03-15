@@ -20,11 +20,34 @@
         streak: number;
         lastLogin: string;
         completedMissions: string[];
+        perfectDaysCount: number;
+        lastPerfectDay: string;
+    }
+
+    // Define habit interface
+    interface Habit {
+        id: string;
+        name: string;
+        description: string;
+        emoji: string;
+        frequency: "daily" | "weekly";
+        completed: boolean;
+        streak: number;
+        lastCompleted: string | null;
+        pointsPerCompletion: number;
+    }
+    
+    // Define todo interface
+    interface Todo {
+        id: number;
+        task: string;
+        completed: boolean;
     }
 
     // Local storage keys
     const MISSIONS_KEY = "todo-app-missions";
     const USER_STATS_KEY = "todo-app-user-stats";
+    const HABITS_KEY = "todo-app-habits";
 
     // Initialize missions
     let missions = $state<Mission[]>([
@@ -69,6 +92,22 @@
             reset: "never",
         },
         {
+            id: "habit-streak-7",
+            title: "Week Warrior",
+            description: "Get a 7-day streak on any habit",
+            points: 30,
+            completed: false,
+            reset: "never",
+        },
+        {
+            id: "habit-streak-30",
+            title: "Monthly Master",
+            description: "Get a 30-day streak on any habit",
+            points: 100,
+            completed: false,
+            reset: "never",
+        },
+        {
             id: "complete-all-habits",
             title: "Perfect Day",
             description: "Complete all your habits for the day",
@@ -84,6 +123,30 @@
             completed: false,
             reset: "never",
         },
+        {
+            id: "create-5-habits",
+            title: "Habit Designer",
+            description: "Create 5 different habits",
+            points: 20,
+            completed: false,
+            reset: "never",
+        },
+        {
+            id: "daily-habit-week",
+            title: "Everyday Hero",
+            description: "Complete the same daily habit for 7 consecutive days",
+            points: 50,
+            completed: false,
+            reset: "never",
+        },
+        {
+            id: "all-habits-week",
+            title: "Perfect Week",
+            description: "Complete all habits every day for a full week",
+            points: 75,
+            completed: false,
+            reset: "weekly",
+        }
     ]);
 
     // User stats
@@ -92,7 +155,13 @@
         streak: 0,
         lastLogin: "",
         completedMissions: [],
+        perfectDaysCount: 0,
+        lastPerfectDay: "",
     });
+
+    // Tracking state for weekly perfect streak
+    let perfectDaysCount = $state(0);
+    let lastPerfectDay = $state("");
 
     // Debug mode state
     let debugMode = $state(false);
@@ -103,6 +172,11 @@
             console.log("Mounting Missions component");
             loadUserData();
             checkDailyLogin();
+            
+            // Check if we need to refresh mission completion state
+            setTimeout(() => {
+                checkAllMissions();
+            }, 1000);
         }
     });
 
@@ -122,6 +196,19 @@
                 if (savedStats) {
                     userStats = JSON.parse(savedStats);
                     console.log("Loaded user stats:", userStats);
+                    
+                    // If there is no perfectDaysCount in userStats, initialize it
+                    if (userStats.perfectDaysCount === undefined) {
+                        userStats.perfectDaysCount = 0;
+                    }
+                    
+                    if (userStats.lastPerfectDay === undefined) {
+                        userStats.lastPerfectDay = "";
+                    }
+                    
+                    // Extract these values
+                    perfectDaysCount = userStats.perfectDaysCount || 0;
+                    lastPerfectDay = userStats.lastPerfectDay || "";
                 }
             }
         } catch (error) {
@@ -134,6 +221,11 @@
         try {
             if (isBrowser) {
                 console.log("Saving user data to localStorage");
+                
+                // Store the perfect day tracking in userStats
+                userStats.perfectDaysCount = perfectDaysCount;
+                userStats.lastPerfectDay = lastPerfectDay;
+                
                 console.log("Saving missions:", missions);
                 console.log("Saving stats:", userStats);
                 localStorage.setItem(MISSIONS_KEY, JSON.stringify(missions));
@@ -173,6 +265,11 @@
                 // Broke the streak (but not first time login)
                 userStats.streak = 1;
                 console.log("Broke streak or first login. Reset to 1.");
+                
+                // Reset perfect days count if it's not consecutive
+                if (!isConsecutiveDay(lastPerfectDay)) {
+                    perfectDaysCount = 0;
+                }
             } else {
                 // First time login
                 userStats.streak = 1;
@@ -191,18 +288,18 @@
     }
 
     // Check if the last login is the previous day (to maintain streak)
-    function isConsecutiveDay(lastLogin: string): boolean {
-        if (!lastLogin) return false;
+    function isConsecutiveDay(lastDate: string): boolean {
+        if (!lastDate) return false;
 
-        const lastDate = new Date(lastLogin);
+        const date = new Date(lastDate);
         const today = new Date();
 
         // Set hours to 0 to compare just the dates
-        lastDate.setHours(0, 0, 0, 0);
+        date.setHours(0, 0, 0, 0);
         today.setHours(0, 0, 0, 0);
 
         // Calculate difference in days
-        const diffTime = today.getTime() - lastDate.getTime();
+        const diffTime = today.getTime() - date.getTime();
         const diffDays = diffTime / (1000 * 60 * 60 * 24);
 
         return diffDays === 1;
@@ -229,35 +326,98 @@
         const mission = missions.find((m) => m.id === missionId);
         console.log("Attempting to complete mission:", missionId, mission);
 
-        if (mission && !mission.completed) {
-            console.log("Completing mission:", mission.title);
+        if (!mission) {
+            console.log(`Mission ${missionId} not found`);
+            return;
+        }
 
-            // Mark as completed
-            missions = missions.map((m) =>
-                m.id === missionId ? { ...m, completed: true } : m,
-            );
+        // If it's a one-time mission and already completed (in completedMissions array), do nothing
+        if (mission.reset === "never" && userStats.completedMissions.includes(missionId)) {
+            console.log(`Mission ${missionId} is a one-time mission already completed`);
+            return;
+        }
+            
+        // If it's already marked as completed for this session, do nothing
+        if (mission.completed) {
+            console.log(`Mission ${missionId} already completed for this session`);
+            return;
+        }
 
-            // Add to completed missions list if it's a one-time mission
-            if (mission.reset === "never") {
-                userStats.completedMissions = [
-                    ...userStats.completedMissions,
-                    missionId,
-                ];
-            }
+        console.log("Completing mission:", mission.title);
 
-            // Award points
-            userStats.points += mission.points;
-            console.log(
-                `Awarded ${mission.points} points. New total: ${userStats.points}`,
-            );
+        // Mark as completed
+        missions = missions.map((m) =>
+            m.id === missionId ? { ...m, completed: true } : m,
+        );
 
-            // Trigger confetti
-            triggerConfetti();
+        // Add to completed missions list if it's a one-time mission
+        if (mission.reset === "never" && !userStats.completedMissions.includes(missionId)) {
+            userStats.completedMissions = [
+                ...userStats.completedMissions,
+                missionId,
+            ];
+        }
 
-            // Save data
-            saveUserData();
-        } else {
-            console.log(`Mission ${missionId} not found or already completed`);
+        // Award points
+        userStats.points += mission.points;
+        console.log(
+            `Awarded ${mission.points} points. New total: ${userStats.points}`,
+        );
+
+        // Trigger confetti
+        triggerConfetti();
+
+        // Save data
+        saveUserData();
+    }
+
+    // Check all missions based on current state
+    function checkAllMissions() {
+        // This function checks all missions that might be completed
+        // but not marked as such
+        checkHabitCount();
+        checkLongestStreak();
+        checkConsecutiveHabitCompletion();
+        
+        const habitsData = getHabitsData();
+        if (habitsData) {
+            const habitCompletedCount = habitsData.filter((h: Habit) => h.completed).length;
+            const totalHabits = habitsData.length;
+            checkHabitCompletion(habitCompletedCount, totalHabits);
+        }
+        
+        const todosData = getTodosData();
+        if (todosData) {
+            const completedTodos = todosData.filter((t: Todo) => t.completed).length;
+            const totalTodos = todosData.length;
+            checkTodoCompletion(completedTodos, totalTodos);
+            checkAddedTodos(totalTodos);
+        }
+    }
+
+    // Get habits data from localStorage
+    function getHabitsData(): Habit[] | null {
+        if (!isBrowser) return null;
+        
+        try {
+            const habitsData = localStorage.getItem(HABITS_KEY);
+            return habitsData ? JSON.parse(habitsData) : null;
+        } catch (error) {
+            console.error("Error getting habits data:", error);
+            return null;
+        }
+    }
+    
+    // Get todos data from localStorage
+    function getTodosData(): Todo[] | null {
+        if (!isBrowser) return null;
+        
+        try {
+            const todosData = localStorage.getItem("todo-app-todos");
+            return todosData ? JSON.parse(todosData) : null;
+        } catch (error) {
+            console.error("Error getting todos data:", error);
+            return null;
         }
     }
 
@@ -304,32 +464,133 @@
         // Check if completed all habits (when there's at least one habit)
         if (total > 0 && completed === total) {
             completeMission("complete-all-habits");
+            
+            // If all habits are completed for the day, update perfect days tracking
+            const today = new Date().toISOString().split("T")[0];
+            
+            // If this is a consecutive perfect day
+            if (isConsecutiveDay(lastPerfectDay) || lastPerfectDay === "") {
+                perfectDaysCount++;
+                console.log(`Perfect day streak: ${perfectDaysCount}`);
+                
+                // If we've had 7 consecutive perfect days
+                if (perfectDaysCount >= 7) {
+                    completeMission("all-habits-week");
+                }
+            } else {
+                // Reset the counter if not consecutive
+                perfectDaysCount = 1;
+            }
+            
+            lastPerfectDay = today;
+            saveUserData();
         }
         
-        // For the streak mission, we'll check directly in localStorage
-        // since the habit streaks are stored in the habits themselves
+        // Check all streak-related missions
         checkHabitStreaks();
     }
     
-    // Check for any habits with streaks of 3 or more
+    // Check for any habits with streaks of the specified length
     function checkHabitStreaks() {
         try {
             if (isBrowser) {
-                const habitsData = localStorage.getItem("todo-app-habits");
+                const habits = getHabitsData();
                 
-                if (habitsData) {
-                    const habits = JSON.parse(habitsData);
-                    
-                    // Check if any habit has a streak of 3 or more
-                    const hasStreakOfThree = habits.some((habit: { streak: number }) => habit.streak >= 3);
-                    
+                if (habits) {
+                    // Check for streak of 3
+                    const hasStreakOfThree = habits.some((habit: Habit) => habit.streak >= 3);
                     if (hasStreakOfThree) {
                         completeMission("habit-streak-3");
+                    }
+                    
+                    // Check for streak of 7
+                    const hasStreakOfSeven = habits.some((habit: Habit) => habit.streak >= 7);
+                    if (hasStreakOfSeven) {
+                        completeMission("habit-streak-7");
+                    }
+                    
+                    // Check for streak of 30
+                    const hasStreakOfThirty = habits.some((habit: Habit) => habit.streak >= 30);
+                    if (hasStreakOfThirty) {
+                        completeMission("habit-streak-30");
+                    }
+                    
+                    // Check if any individual habit has a 7-day streak (for daily habits)
+                    const dailyHabitWithWeekStreak = habits.some(
+                        (habit: Habit) => habit.frequency === "daily" && habit.streak >= 7
+                    );
+                    if (dailyHabitWithWeekStreak) {
+                        completeMission("daily-habit-week");
                     }
                 }
             }
         } catch (error) {
             console.error("Error checking habit streaks:", error);
+        }
+    }
+    
+    // Check for the number of habits created
+    function checkHabitCount() {
+        try {
+            if (isBrowser) {
+                const habits = getHabitsData();
+                
+                if (habits && habits.length >= 5) {
+                    completeMission("create-5-habits");
+                }
+            }
+        } catch (error) {
+            console.error("Error checking habit count:", error);
+        }
+    }
+    
+    // Check for habit with longest streak
+    function checkLongestStreak() {
+        try {
+            if (isBrowser) {
+                const habits = getHabitsData();
+                
+                if (habits && habits.length > 0) {
+                    const maxStreak = Math.max(...habits.map((h: Habit) => h.streak));
+                    
+                    // Update all streak-based missions based on this max streak
+                    if (maxStreak >= 3) {
+                        completeMission("habit-streak-3");
+                    }
+                    
+                    if (maxStreak >= 7) {
+                        completeMission("habit-streak-7");
+                    }
+                    
+                    if (maxStreak >= 30) {
+                        completeMission("habit-streak-30");
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error checking longest streak:", error);
+        }
+    }
+    
+    // Check for consecutive habit completion
+    function checkConsecutiveHabitCompletion() {
+        try {
+            if (isBrowser) {
+                const habits = getHabitsData();
+                
+                if (habits && habits.length > 0) {
+                    // Check for daily habits with 7+ day streaks
+                    const dailyHabitWith7DayStreak = habits.some(
+                        (h: Habit) => h.frequency === "daily" && h.streak >= 7
+                    );
+                    
+                    if (dailyHabitWith7DayStreak) {
+                        completeMission("daily-habit-week");
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error checking consecutive habit completion:", error);
         }
     }
 
@@ -346,6 +607,24 @@
             );
             saveUserData();
             triggerConfetti();
+        }
+    }
+    
+    function resetAllMissions() {
+        if (isBrowser && debugMode) {
+            // Reset all missions
+            missions = missions.map(mission => ({
+                ...mission,
+                completed: false
+            }));
+            
+            // Remove from completedMissions list
+            userStats.completedMissions = [];
+            
+            // Save changes
+            saveUserData();
+            
+            console.log("All missions reset");
         }
     }
 </script>
@@ -379,32 +658,49 @@
     {#if debugMode}
         <div class="mb-6 p-3 bg-warning/20 rounded-lg">
             <h3 class="font-medium mb-2">Debug Controls</h3>
-            <div class="flex space-x-2">
-                <button
-                    class="btn btn-sm btn-success"
-                    onclick={() => addDebugPoints(10)}
-                >
-                    +10 Points
-                </button>
-                <button
-                    class="btn btn-sm btn-success"
-                    onclick={() => addDebugPoints(50)}
-                >
-                    +50 Points
-                </button>
-                <button
-                    class="btn btn-sm btn-success"
-                    onclick={() => addDebugPoints(100)}
-                >
-                    +100 Points
-                </button>
+            <div class="flex flex-col gap-2">
+                <div class="flex space-x-2">
+                    <button
+                        class="btn btn-sm btn-success"
+                        onclick={() => addDebugPoints(10)}
+                    >
+                        +10 Points
+                    </button>
+                    <button
+                        class="btn btn-sm btn-success"
+                        onclick={() => addDebugPoints(50)}
+                    >
+                        +50 Points
+                    </button>
+                    <button
+                        class="btn btn-sm btn-success"
+                        onclick={() => addDebugPoints(100)}
+                    >
+                        +100 Points
+                    </button>
+                </div>
+                <div class="flex space-x-2 mt-2">
+                    <button
+                        class="btn btn-sm btn-warning"
+                        onclick={checkAllMissions}
+                    >
+                        Check Missions
+                    </button>
+                    <button
+                        class="btn btn-sm btn-error"
+                        onclick={resetAllMissions}
+                    >
+                        Reset All Missions
+                    </button>
+                </div>
             </div>
         </div>
     {/if}
 
     <!-- Missions List -->
     <div class="space-y-3">
-        {#each missions as mission (mission.id)}
+        <h3 class="font-semibold text-lg">Daily Missions</h3>
+        {#each missions.filter(m => m.reset === "daily") as mission (mission.id)}
             <div class="flex items-center gap-3 bg-base-200 p-3 rounded-lg">
                 <input
                     type="checkbox"
@@ -415,6 +711,31 @@
                 <div class="flex-grow">
                     <h4
                         class={mission.completed
+                            ? "font-medium line-through text-base-content/50"
+                            : "font-medium"}
+                    >
+                        {mission.title}
+                    </h4>
+                    <p class="text-sm text-base-content/70">
+                        {mission.description}
+                    </p>
+                </div>
+                <span class="badge badge-primary">+{mission.points}</span>
+            </div>
+        {/each}
+
+        <h3 class="font-semibold text-lg mt-6">Achievement Missions</h3>
+        {#each missions.filter(m => m.reset === "never" || m.reset === "weekly") as mission (mission.id)}
+            <div class="flex items-center gap-3 bg-base-200 p-3 rounded-lg">
+                <input
+                    type="checkbox"
+                    checked={mission.completed || userStats.completedMissions.includes(mission.id)}
+                    disabled={true}
+                    class="checkbox checkbox-primary"
+                />
+                <div class="flex-grow">
+                    <h4
+                        class={mission.completed || userStats.completedMissions.includes(mission.id)
                             ? "font-medium line-through text-base-content/50"
                             : "font-medium"}
                     >
