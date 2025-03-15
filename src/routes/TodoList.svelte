@@ -1,4 +1,6 @@
 <script lang="ts">
+    import confetti from "canvas-confetti";
+
     // Todo type definition
     interface Todo {
         id: number;
@@ -11,6 +13,22 @@
 
     // Form input value
     let newTask = $state("");
+    
+    // Track mouse position for confetti
+    let mouseX = $state(0);
+    let mouseY = $state(0);
+
+    // Update mouse position on mouse move
+    function updateMousePosition(e: MouseEvent) {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+    }
+
+    // Track mouse movement globally
+    function handleMouseMove(e: MouseEvent) {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+    }
 
     // Generate unique ID for todos
     let nextId = $state(1);
@@ -37,9 +55,38 @@
 
     // Toggle todo completion status
     function toggleCompleted(id: number) {
+        const todo = todoList.find((t) => t.id === id);
+        const wasCompleted = todo?.completed;
+
         todoList = todoList.map((todo) =>
             todo.id === id ? { ...todo, completed: !todo.completed } : todo,
         );
+
+        // Celebrate with confetti when a task is newly marked as completed
+        if (!wasCompleted) {
+            celebrateCompletion();
+        }
+    }
+
+    // Function to trigger confetti
+    function celebrateCompletion() {
+        // Convert mouse position to relative coordinates (0-1)
+        const x = mouseX / window.innerWidth;
+        const y = mouseY / window.innerHeight;
+        
+        // Create a smaller, more subtle confetti effect at cursor position
+        confetti({
+            particleCount: 80,
+            spread: 40,
+            origin: { y, x },
+            colors: ["#4CAF50", "#8BC34A", "#CDDC39", "#FFEB3B"],
+            angle: 90,
+            startVelocity: 25,
+            gravity: 0.8,
+            zIndex: 1000,
+            scalar: 0.7,
+            disableForReducedMotion: true,
+        });
     }
 
     // Delete a todo
@@ -80,8 +127,17 @@
     const totalCount = $derived(todoList.length);
 </script>
 
-<div class="flex flex-col p-4 bg-base-100 rounded-lg shadow-lg max-w-md w-full">
-    <h2 class="text-2xl font-bold mb-6 text-base-content/70">Todo List</h2>
+<div class="flex flex-col p-4 bg-base-100 rounded-lg shadow-lg max-w-md w-full"
+    onmousemove={handleMouseMove}
+    role="region"
+    aria-label="Todo list container">
+    <h2 class="text-2xl font-bold mb-6 text-base-content/70">
+        {new Date().toLocaleDateString("en-US", {
+            weekday: "long",
+            day: "numeric",
+            month: "short",
+        })}
+    </h2>
 
     <!-- Task Summary -->
     {#if todoList.length > 0}
