@@ -2,6 +2,9 @@
     import { onMount } from "svelte";
     import confetti from "canvas-confetti";
 
+    // Check if we're in a browser environment
+    const isBrowser = typeof window !== 'undefined';
+
     // Types for our garden system
     interface Flower {
         id: string;
@@ -91,11 +94,11 @@
                 flowerId: null,
                 plantedDate: null,
             })),
-        unlockedFlowers: ["daisy", "tulip"], // Start with some basic flowers unlocked
+        unlockedFlowers: ["daisy", "tulip", "rose", "sunflower", "lotus", "cherry-blossom"], // All flowers unlocked for testing
     });
 
     // User stats (imported from Missions component)
-    let userPoints = $state(0);
+    let userPoints = $state(200);  // Start with 200 points, enough for all flowers
 
     // Selected flower for planting
     let selectedFlower = $state<string | null>(null);
@@ -106,69 +109,115 @@
 
     // Load data from local storage on mount
     onMount(() => {
-        loadGardenData();
-        loadUserStats();
+        if (isBrowser) {
+            console.log("Mounting Garden component");
+            
+            // Load garden data first
+            loadGardenData();
+            
+            // Then load user points
+            loadUserStats();
+            
+            // Only update garden flowers if they're not already unlocked
+            const currentGarden = JSON.parse(localStorage.getItem(GARDEN_KEY) || '{}');
+            if (currentGarden && currentGarden.unlockedFlowers) {
+                if (currentGarden.unlockedFlowers.length < 3) {
+                    // Ensure all flowers are unlocked without resetting other garden data
+                    garden = {
+                        ...currentGarden,
+                        unlockedFlowers: ["daisy", "tulip", "rose", "sunflower", "lotus", "cherry-blossom"]
+                    };
+                    // Save updated garden with all flowers unlocked
+                    saveGardenData();
+                }
+            }
+            
+            // Set up an interval to refresh points every 2 seconds
+            const refreshInterval = setInterval(() => {
+                loadUserStats();
+            }, 2000);
+            
+            return () => {
+                clearInterval(refreshInterval);
+            };
+        }
     });
 
     // Load garden data from local storage
     function loadGardenData() {
         try {
-            const savedGarden = localStorage.getItem(GARDEN_KEY);
-
-            if (savedGarden) {
-                garden = JSON.parse(savedGarden);
+            if (isBrowser) {
+                console.log("Loading garden data from localStorage");
+                const savedGarden = localStorage.getItem(GARDEN_KEY);
+                
+                if (savedGarden) {
+                    garden = JSON.parse(savedGarden);
+                    console.log("Loaded garden data:", garden);
+                }
             }
         } catch (error) {
-            console.error("Error loading garden data:", error);
+            console.error('Error loading garden data:', error);
         }
     }
 
     // Load user stats from local storage
     function loadUserStats() {
         try {
-            const savedStats = localStorage.getItem(USER_STATS_KEY);
-
-            if (savedStats) {
-                const stats = JSON.parse(savedStats);
-                userPoints = stats.points;
+            if (isBrowser) {
+                console.log("Loading user stats from localStorage");
+                const savedStats = localStorage.getItem(USER_STATS_KEY);
+                
+                if (savedStats) {
+                    const stats = JSON.parse(savedStats);
+                    userPoints = stats.points;
+                    console.log("Loaded user points:", userPoints);
+                }
             }
         } catch (error) {
-            console.error("Error loading user stats:", error);
+            console.error('Error loading user stats:', error);
         }
     }
 
     // Save garden data to local storage
     function saveGardenData() {
         try {
-            localStorage.setItem(GARDEN_KEY, JSON.stringify(garden));
+            if (isBrowser) {
+                console.log("Saving garden data to localStorage");
+                localStorage.setItem(GARDEN_KEY, JSON.stringify(garden));
+            }
         } catch (error) {
-            console.error("Error saving garden data:", error);
+            console.error('Error saving garden data:', error);
         }
     }
 
     // Update user points after spending
     function updateUserPoints(pointsSpent: number) {
         try {
-            const savedStats = localStorage.getItem(USER_STATS_KEY);
-
-            if (savedStats) {
-                const stats = JSON.parse(savedStats);
-                stats.points -= pointsSpent;
-                userPoints = stats.points;
-                localStorage.setItem(USER_STATS_KEY, JSON.stringify(stats));
+            if (isBrowser) {
+                console.log(`Spending ${pointsSpent} points`);
+                const savedStats = localStorage.getItem(USER_STATS_KEY);
+                
+                if (savedStats) {
+                    const stats = JSON.parse(savedStats);
+                    stats.points -= pointsSpent;
+                    userPoints = stats.points;
+                    console.log("Updated user points:", userPoints);
+                    localStorage.setItem(USER_STATS_KEY, JSON.stringify(stats));
+                }
             }
         } catch (error) {
-            console.error("Error updating user points:", error);
+            console.error('Error updating user points:', error);
         }
     }
 
     // Start planting mode
     function startPlanting(flowerId: string) {
         const flower = availableFlowers.find((f) => f.id === flowerId);
-
+        
         if (flower && userPoints >= flower.cost) {
             selectedFlower = flowerId;
             isPlantingMode = true;
+            console.log("Starting planting mode with flower:", flower.name);
         } else {
             alert("You don't have enough points to plant this flower!");
         }
@@ -177,10 +226,12 @@
     // Plant a flower in a tile
     function plantFlower(tileId: number) {
         if (!selectedFlower || !isPlantingMode) return;
-
+        
         const flower = availableFlowers.find((f) => f.id === selectedFlower);
-
+        
         if (flower && userPoints >= flower.cost) {
+            console.log(`Planting ${flower.name} in tile ${tileId}`);
+            
             // Update the tile
             garden.tiles = garden.tiles.map((tile) =>
                 tile.id === tileId
@@ -191,17 +242,17 @@
                       }
                     : tile,
             );
-
+            
             // Spend points
             updateUserPoints(flower.cost);
-
+            
             // Exit planting mode
             isPlantingMode = false;
             selectedFlower = null;
-
+            
             // Save garden data
             saveGardenData();
-
+            
             // Celebrate with confetti
             triggerConfetti();
         }
@@ -215,11 +266,13 @@
 
     // Trigger confetti celebration
     function triggerConfetti() {
-        confetti({
-            particleCount: 80,
-            spread: 100,
-            origin: { y: 0.6 },
-        });
+        if (isBrowser) {
+            confetti({
+                particleCount: 80,
+                spread: 100,
+                origin: { y: 0.6 },
+            });
+        }
     }
 
     // Get the flower for a tile
@@ -237,7 +290,7 @@
     }
 
     // Get filtered list of flowers the user has unlocked
-    let unlockedFlowers = $derived(
+    const unlockedFlowers = $derived(
         availableFlowers.filter((flower) =>
             garden.unlockedFlowers.includes(flower.id),
         ),
@@ -259,15 +312,17 @@
             <button
                 class={`w-16 h-16 rounded-lg flex items-center justify-center text-3xl
                 ${isPlantingMode ? "border-2 border-dashed border-primary hover:bg-primary/10" : "bg-base-200"}`}
-                onclick={() => (isPlantingMode ? plantFlower(tile.id) : null)}
+                onclick={() => isPlantingMode ? plantFlower(tile.id) : null}
                 disabled={!isPlantingMode && !tile.flowerId}
             >
                 {#if tile.flowerId}
                     <span>{getFlowerForTile(tile.id)?.image || "🌱"}</span>
-                {:else if isPlantingMode}
-                    <span class="text-primary/50 text-xs">Plant here</span>
                 {:else}
-                    <span class="text-xs text-base-content/30">Empty</span>
+                    {#if isPlantingMode}
+                        <span class="text-primary/50 text-xs">Plant here</span>
+                    {:else}
+                        <span class="text-xs text-base-content/30">Empty</span>
+                    {/if}
                 {/if}
             </button>
         {/each}

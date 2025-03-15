@@ -3,11 +3,14 @@
     import Pomodoro from "./Pomodoro.svelte";
     import Missions from "./Missions.svelte";
     import Garden from "./Garden.svelte";
+    import HabitTracker from "./HabitTracker.svelte";
+    import { onMount } from "svelte";
 
-    // References to components for cross-component communication
+    // References to components for cross-component communication with proper typing and reactivity
     let todoListComponent = $state<TodoList | null>(null);
     let pomodoroComponent = $state<Pomodoro | null>(null);
     let missionsComponent = $state<Missions | null>(null);
+    let habitTrackerComponent = $state<HabitTracker | null>(null);
 
     // Active tab state
     let activeTab = $state("todo");
@@ -36,6 +39,33 @@
             missionsComponent.checkAddedTodos(total);
         }
     }
+
+    // Function to handle habit stats updates
+    function handleHabitStats(
+        e: CustomEvent<{ completed: number; total: number }>,
+    ) {
+        if (missionsComponent) {
+            const { completed, total } = e.detail;
+            missionsComponent.checkHabitCompletion(completed, total);
+        }
+    }
+
+    // Tab switching functions
+    function switchToTodo() {
+        activeTab = "todo";
+    }
+
+    function switchToHabits() {
+        activeTab = "habits";
+    }
+
+    function switchToMissions() {
+        activeTab = "missions";
+    }
+
+    function switchToGarden() {
+        activeTab = "garden";
+    }
 </script>
 
 <div class="container mx-auto p-4">
@@ -50,19 +80,25 @@
     <div class="tabs tabs-boxed mb-6">
         <button
             class={`tab ${activeTab === "todo" ? "tab-active" : ""}`}
-            onclick={() => (activeTab = "todo")}
+            onclick={switchToTodo}
         >
             Tasks & Focus
         </button>
         <button
+            class={`tab ${activeTab === "habits" ? "tab-active" : ""}`}
+            onclick={switchToHabits}
+        >
+            Habits
+        </button>
+        <button
             class={`tab ${activeTab === "missions" ? "tab-active" : ""}`}
-            onclick={() => (activeTab = "missions")}
+            onclick={switchToMissions}
         >
             Missions
         </button>
         <button
             class={`tab ${activeTab === "garden" ? "tab-active" : ""}`}
-            onclick={() => (activeTab = "garden")}
+            onclick={switchToGarden}
         >
             Garden
         </button>
@@ -82,6 +118,11 @@
                     on:todosAdded={handleTodosAdded}
                 />
             </div>
+        {:else if activeTab === "habits"}
+            <HabitTracker 
+                bind:this={habitTrackerComponent}
+                on:habitStats={handleHabitStats}
+            />
         {:else if activeTab === "missions"}
             <Missions bind:this={missionsComponent} />
         {:else if activeTab === "garden"}

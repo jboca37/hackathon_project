@@ -1,6 +1,9 @@
 <script lang="ts">
     import confetti from "canvas-confetti";
-    import { createEventDispatcher } from "svelte";
+    import { createEventDispatcher, onMount } from "svelte";
+
+    // Check if we're in a browser environment
+    const isBrowser = typeof window !== "undefined";
 
     // Create event dispatcher
     const dispatch = createEventDispatcher();
@@ -12,7 +15,7 @@
         completed: boolean;
     }
 
-    // Initialize todo list with $state instead of writable store
+    // Initialize todo list with $state
     let todoList = $state<Todo[]>([]);
 
     // Form input value
@@ -21,12 +24,6 @@
     // Track mouse position for confetti
     let mouseX = $state(0);
     let mouseY = $state(0);
-
-    // Update mouse position on mouse move
-    function updateMousePosition(e: MouseEvent) {
-        mouseX = e.clientX;
-        mouseY = e.clientY;
-    }
 
     // Track mouse movement globally
     function handleMouseMove(e: MouseEvent) {
@@ -41,9 +38,63 @@
     let editingId = $state<number | null>(null);
     let editText = $state("");
 
+    // Local storage key
+    const TODOS_KEY = "todo-app-todos";
+    const NEXT_ID_KEY = "todo-app-next-id";
+
+    // Load todos from localStorage on mount
+    onMount(() => {
+        if (isBrowser) {
+            console.log("Mounting TodoList component");
+            loadTodos();
+
+            // Emit initial events for mission tracking
+            setTimeout(() => {
+                emitListUpdatedEvent();
+                emitTodosAddedEvent();
+            }, 500);
+        }
+    });
+
+    // Load todos from localStorage
+    function loadTodos() {
+        try {
+            if (isBrowser) {
+                console.log("Loading todos from localStorage");
+                const savedTodos = localStorage.getItem(TODOS_KEY);
+                const savedNextId = localStorage.getItem(NEXT_ID_KEY);
+
+                if (savedTodos) {
+                    todoList = JSON.parse(savedTodos);
+                    console.log("Loaded todos:", todoList);
+                }
+
+                if (savedNextId) {
+                    nextId = JSON.parse(savedNextId);
+                }
+            }
+        } catch (error) {
+            console.error("Error loading todos:", error);
+        }
+    }
+
+    // Save todos to localStorage
+    function saveTodos() {
+        try {
+            if (isBrowser) {
+                console.log("Saving todos to localStorage");
+                localStorage.setItem(TODOS_KEY, JSON.stringify(todoList));
+                localStorage.setItem(NEXT_ID_KEY, JSON.stringify(nextId));
+            }
+        } catch (error) {
+            console.error("Error saving todos:", error);
+        }
+    }
+
     // Add a new todo
     function addTodo() {
         if (newTask.trim() !== "") {
+            console.log("Adding new todo:", newTask);
             todoList = [
                 ...todoList,
                 {
@@ -55,6 +106,9 @@
             nextId++;
             newTask = ""; // Clear input after adding
 
+            // Save to localStorage
+            saveTodos();
+
             // Emit event for mission tracking
             emitTodosAddedEvent();
         }
@@ -65,9 +119,13 @@
         const todo = todoList.find((t) => t.id === id);
         const wasCompleted = todo?.completed;
 
+        console.log(`Toggling completion for todo ${id}`);
         todoList = todoList.map((todo) =>
             todo.id === id ? { ...todo, completed: !todo.completed } : todo,
         );
+
+        // Save to localStorage
+        saveTodos();
 
         // Celebrate with confetti when a task is newly marked as completed
         if (!wasCompleted) {
@@ -80,6 +138,8 @@
 
     // Function to trigger confetti
     function celebrateCompletion() {
+        if (!isBrowser) return;
+
         // Convert mouse position to relative coordinates (0-1)
         const x = mouseX / window.innerWidth;
         const y = mouseY / window.innerHeight;
@@ -101,7 +161,11 @@
 
     // Delete a todo
     function deleteTodo(id: number) {
+        console.log(`Deleting todo ${id}`);
         todoList = todoList.filter((todo) => todo.id !== id);
+
+        // Save to localStorage
+        saveTodos();
 
         // Emit event for mission tracking
         emitListUpdatedEvent();
@@ -110,9 +174,13 @@
     // Edit a todo
     function editTodo(id: number, newText: string) {
         if (newText.trim() !== "") {
+            console.log(`Editing todo ${id}`);
             todoList = todoList.map((todo) =>
                 todo.id === id ? { ...todo, task: newText } : todo,
             );
+
+            // Save to localStorage
+            saveTodos();
 
             // Emit event for mission tracking
             emitListUpdatedEvent();
@@ -143,6 +211,9 @@
         const completedCount = todoList.filter((t) => t.completed).length;
         const totalCount = todoList.length;
 
+        console.log(
+            `Emitting listUpdated event: ${completedCount}/${totalCount} completed`,
+        );
         dispatch("listUpdated", {
             completed: completedCount,
             total: totalCount,
@@ -151,6 +222,7 @@
 
     // Emit event for added todos
     function emitTodosAddedEvent() {
+        console.log(`Emitting todosAdded event: ${todoList.length} todos`);
         dispatch("todosAdded", {
             total: todoList.length,
         });
@@ -192,7 +264,7 @@
             </p>
         {:else}
             {#each todoList as todo (todo.id)}
-                <div class="flex items-center gap-3 bg-base-200 p-3 rounded-lg">
+                <div class="flex flex-wrap items-center gap-3 bg-base-200 p-3 rounded-lg">
                     {#if editingId === todo.id}
                         <!-- Edit Mode -->
                         <input
@@ -200,48 +272,55 @@
                             class="input input-bordered flex-grow"
                             onkeydown={(e) => e.key === "Enter" && saveEdit()}
                         />
-                        <button
-                            class="btn btn-sm btn-success"
-                            onclick={saveEdit}
-                        >
-                            Save
-                        </button>
-                        <button
-                            class="btn btn-sm btn-ghost"
-                            onclick={cancelEdit}
-                        >
-                            Cancel
-                        </button>
+                        <div class="flex gap-2 mt-2 sm:mt-0">
+                            <button
+                                class="btn btn-sm btn-success"
+                                onclick={saveEdit}
+                            >
+                                Save
+                            </button>
+                            <button
+                                class="btn btn-sm btn-ghost"
+                                onclick={cancelEdit}
+                            >
+                                Cancel
+                            </button>
+                        </div>
                     {:else}
                         <!-- View Mode -->
-                        <input
-                            type="checkbox"
-                            checked={todo.completed}
-                            onchange={() => toggleCompleted(todo.id)}
-                            class="checkbox checkbox-primary"
-                        />
+                        <div class="flex items-center gap-3 min-w-0 flex-grow">
+                            <input
+                                type="checkbox"
+                                checked={todo.completed}
+                                onchange={() => toggleCompleted(todo.id)}
+                                class="checkbox checkbox-primary flex-shrink-0"
+                            />
 
-                        <span
-                            class={todo.completed
-                                ? "line-through flex-grow text-base-content/50"
-                                : "flex-grow"}
-                        >
-                            {todo.task}
-                        </span>
+                            <span
+                                class={todo.completed
+                                    ? "line-through flex-grow text-base-content/50 break-words overflow-hidden"
+                                    : "flex-grow break-words overflow-hidden"}
+                                style="min-width: 0; word-wrap: break-word;"
+                            >
+                                {todo.task}
+                            </span>
+                        </div>
 
-                        <button
-                            class="btn btn-sm btn-ghost"
-                            onclick={() => startEdit(todo)}
-                        >
-                            Edit
-                        </button>
+                        <div class="flex gap-2 ml-auto">
+                            <button
+                                class="btn btn-sm btn-ghost flex-shrink-0"
+                                onclick={() => startEdit(todo)}
+                            >
+                                Edit
+                            </button>
 
-                        <button
-                            class="btn btn-sm btn-error btn-ghost"
-                            onclick={() => deleteTodo(todo.id)}
-                        >
-                            Delete
-                        </button>
+                            <button
+                                class="btn btn-sm btn-error btn-ghost flex-shrink-0"
+                                onclick={() => deleteTodo(todo.id)}
+                            >
+                                Delete
+                            </button>
+                        </div>
                     {/if}
                 </div>
             {/each}
