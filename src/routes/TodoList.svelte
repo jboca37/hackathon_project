@@ -1,5 +1,9 @@
 <script lang="ts">
     import confetti from "canvas-confetti";
+    import { createEventDispatcher } from "svelte";
+
+    // Create event dispatcher
+    const dispatch = createEventDispatcher();
 
     // Todo type definition
     interface Todo {
@@ -13,7 +17,7 @@
 
     // Form input value
     let newTask = $state("");
-    
+
     // Track mouse position for confetti
     let mouseX = $state(0);
     let mouseY = $state(0);
@@ -50,6 +54,9 @@
             ];
             nextId++;
             newTask = ""; // Clear input after adding
+
+            // Emit event for mission tracking
+            emitTodosAddedEvent();
         }
     }
 
@@ -66,6 +73,9 @@
         if (!wasCompleted) {
             celebrateCompletion();
         }
+
+        // Emit event for mission tracking
+        emitListUpdatedEvent();
     }
 
     // Function to trigger confetti
@@ -73,7 +83,7 @@
         // Convert mouse position to relative coordinates (0-1)
         const x = mouseX / window.innerWidth;
         const y = mouseY / window.innerHeight;
-        
+
         // Create a smaller, more subtle confetti effect at cursor position
         confetti({
             particleCount: 80,
@@ -92,6 +102,9 @@
     // Delete a todo
     function deleteTodo(id: number) {
         todoList = todoList.filter((todo) => todo.id !== id);
+
+        // Emit event for mission tracking
+        emitListUpdatedEvent();
     }
 
     // Edit a todo
@@ -100,6 +113,9 @@
             todoList = todoList.map((todo) =>
                 todo.id === id ? { ...todo, task: newText } : todo,
             );
+
+            // Emit event for mission tracking
+            emitListUpdatedEvent();
         }
     }
 
@@ -122,15 +138,35 @@
         editingId = null;
     }
 
+    // Emit event for todo list updates
+    function emitListUpdatedEvent() {
+        const completedCount = todoList.filter((t) => t.completed).length;
+        const totalCount = todoList.length;
+
+        dispatch("listUpdated", {
+            completed: completedCount,
+            total: totalCount,
+        });
+    }
+
+    // Emit event for added todos
+    function emitTodosAddedEvent() {
+        dispatch("todosAdded", {
+            total: todoList.length,
+        });
+    }
+
     // Derived state for task summary
-    const completedCount = $derived(todoList.filter((t) => t.completed).length);
-    const totalCount = $derived(todoList.length);
+    let completedCount = $derived(todoList.filter((t) => t.completed).length);
+    let totalCount = $derived(todoList.length);
 </script>
 
-<div class="flex flex-col p-4 bg-base-100 rounded-lg shadow-lg max-w-md w-full"
+<div
+    class="flex flex-col p-4 bg-base-100 rounded-lg shadow-lg max-w-md w-full"
     onmousemove={handleMouseMove}
     role="region"
-    aria-label="Todo list container">
+    aria-label="Todo list container"
+>
     <h2 class="text-2xl font-bold mb-6 text-base-content/70">
         {new Date().toLocaleDateString("en-US", {
             weekday: "long",

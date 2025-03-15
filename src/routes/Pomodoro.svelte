@@ -1,6 +1,9 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
+    import { onDestroy, createEventDispatcher } from "svelte";
     import confetti from "canvas-confetti";
+
+    // Create event dispatcher
+    const dispatch = createEventDispatcher();
 
     let timeRemaining = $state(15); // Set to 15 seconds for testing, switch to 1500 for production
     let totalTime = $state(15); // Same as above
@@ -9,8 +12,8 @@
     let isCompleted = $state(false);
 
     // Animation variables
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let animationTimer: ReturnType<typeof setInterval> | null = null;
+    let timer = $state<ReturnType<typeof setInterval> | null>(null);
+    let animationTimer = $state<ReturnType<typeof setInterval> | null>(null);
 
     // For smoother animation, update more frequently
     const ANIMATION_INTERVAL = 50; // ms
@@ -21,7 +24,7 @@
         100 - Math.round((timeRemaining / totalTime) * 100),
     );
 
-    const formattedTime = $derived(formatTime(timeRemaining));
+    let formattedTime = $derived(formatTime(timeRemaining));
 
     function formatTime(seconds: number): string {
         const mins = Math.floor(seconds / 60);
@@ -66,6 +69,9 @@
     function timerComplete() {
         isCompleted = true;
         stopTimer();
+
+        // Emit completed event for mission tracking
+        dispatch("completed");
 
         // Trigger confetti celebration
         const duration = 3 * 1000;
@@ -160,26 +166,21 @@
 </script>
 
 <div class="flex flex-col items-center justify-center min-h-[60vh] p-4 gap-y-9">
-    <h1 class="text-2xl font-bold mb-8">Pomodoro Timer</h1>
-
     <div class="flex justify-center gap-4 w-full mb-6">
         <button
-            class="btn btn-lg"
-            class:btn-primary={!isCompleted}
+            class="btn btn-lg {!isCompleted ? 'btn-primary' : ''}"
             onclick={() => setTimerDuration(25)}
         >
             Pomodoro
         </button>
         <button
-            class="btn btn-lg"
-            class:btn-primary={!isCompleted}
+            class="btn btn-lg {!isCompleted ? 'btn-primary' : ''}"
             onclick={() => setTimerDuration(5)}
         >
             Short Break
         </button>
         <button
-            class="btn btn-lg"
-            class:btn-primary={!isCompleted}
+            class="btn btn-lg {!isCompleted ? 'btn-primary' : ''}"
             onclick={() => setTimerDuration(15)}
         >
             Long Break
