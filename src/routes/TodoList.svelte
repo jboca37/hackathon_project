@@ -81,13 +81,7 @@
 </script>
 
 <div class="flex flex-col p-4 bg-base-100 rounded-lg shadow-lg max-w-md w-full">
-    <h2 class="text-2xl font-bold mb-6 text-base-content/70">
-        {new Date().toLocaleDateString("en-US", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-        })}
-    </h2>
+    <h2 class="text-2xl font-bold mb-6 text-base-content/70">Todo List</h2>
 
     <!-- Task Summary -->
     {#if todoList.length > 0}
