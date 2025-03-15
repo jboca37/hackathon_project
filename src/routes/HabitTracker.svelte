@@ -598,17 +598,22 @@
                     
                     <div class="form-control">
                         <label class="label" for="habit-emoji">
-                            <span class="label-text">Emoji</span>
+                            <span class="label-text">Choose an Emoji</span>
                         </label>
-                        <select 
-                            id="habit-emoji"
-                            class="select select-bordered w-full" 
-                            bind:value={newHabitEmoji}
-                        >
+                        <div class="grid grid-cols-5 gap-2 p-2 bg-base-200 rounded-lg">
                             {#each commonEmojis as emoji}
-                                <option value={emoji}>{emoji}</option>
+                                <button 
+                                    type="button"
+                                    class={`w-10 h-10 text-xl flex items-center justify-center rounded ${newHabitEmoji === emoji ? 'bg-primary text-primary-content' : 'bg-base-100 hover:bg-base-300'}`}
+                                    onclick={() => newHabitEmoji = emoji}
+                                >
+                                    {emoji}
+                                </button>
                             {/each}
-                        </select>
+                        </div>
+                        <div class="mt-2 text-sm text-center">
+                            Selected: <span class="text-xl">{newHabitEmoji}</span>
+                        </div>
                     </div>
                     
                     <div class="form-control">
