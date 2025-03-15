@@ -1,2 +1,9 @@
-<h1>Welcome to SvelteKit</h1>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+<script lang="ts">
+    import Pomodoro from "./Pomodoro.svelte";
+    import TodoList from "./TodoList.svelte";
+</script>
+
+<div class="flex flex-row justify-center items-center space-x-96">
+    <Pomodoro />
+    <TodoList />
+</div>
